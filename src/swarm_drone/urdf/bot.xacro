@@ -1,0 +1,156 @@
+<?xml version="1.0"?>
+<!--
+  Physical quadrotor body: central box, four arms in an X configuration,
+  a motor housing and a (non-rotating) propeller disc at each arm tip.
+  Primitive geometry only (box/cylinder) - no meshes.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="body_length" value="0.30"/>
+  <xacro:property name="body_width" value="0.30"/>
+  <xacro:property name="body_height" value="0.10"/>
+  <xacro:property name="body_mass" value="1.2"/>
+
+  <xacro:property name="arm_length" value="0.22"/>
+  <xacro:property name="arm_width" value="0.03"/>
+  <xacro:property name="arm_height" value="0.015"/>
+  <xacro:property name="arm_mass" value="0.05"/>
+
+  <xacro:property name="motor_radius" value="0.02"/>
+  <xacro:property name="motor_height" value="0.04"/>
+  <xacro:property name="motor_mass" value="0.03"/>
+
+  <xacro:property name="prop_radius" value="0.09"/>
+  <xacro:property name="prop_height" value="0.01"/>
+  <xacro:property name="prop_mass" value="0.01"/>
+
+  <material name="drone_body_color">
+    <color rgba="0.15 0.15 0.18 1.0"/>
+  </material>
+  <material name="drone_arm_color">
+    <color rgba="0.35 0.35 0.4 1.0"/>
+  </material>
+  <material name="drone_motor_color">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+  <material name="drone_prop_color">
+    <color rgba="0.6 0.6 0.65 0.9"/>
+  </material>
+
+  <xacro:macro name="box_inertial" params="mass x y z">
+    <inertial>
+      <mass value="${mass}"/>
+      <inertia
+        ixx="${mass*(y*y+z*z)/12.0}" ixy="0.0" ixz="0.0"
+        iyy="${mass*(x*x+z*z)/12.0}" iyz="0.0"
+        izz="${mass*(x*x+y*y)/12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="cylinder_inertial" params="mass r l">
+    <inertial>
+      <mass value="${mass}"/>
+      <inertia
+        ixx="${mass*(3*r*r+l*l)/12.0}" ixy="0.0" ixz="0.0"
+        iyy="${mass*(3*r*r+l*l)/12.0}" iyz="0.0"
+        izz="${mass*r*r/2.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- Central body: also the root / base_link -->
+  <link name="${prefix}base_link">
+    <visual>
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}"/>
+      </geometry>
+      <material name="drone_body_color"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertial mass="${body_mass}" x="${body_length}" y="${body_width}" z="${body_height}"/>
+  </link>
+
+  <!-- One arm + motor + propeller assembly, placed radially at angle_deg around base_link -->
+  <xacro:macro name="rotor_assembly" params="index angle_deg">
+    <xacro:property name="a" value="${angle_deg*pi/180.0}"/>
+    <xacro:property name="hub_radius" value="${body_length/2.0}"/>
+    <xacro:property name="arm_x" value="${(hub_radius + arm_length/2.0)*cos(a)}"/>
+    <xacro:property name="arm_y" value="${(hub_radius + arm_length/2.0)*sin(a)}"/>
+    <xacro:property name="tip_x" value="${(hub_radius + arm_length)*cos(a)}"/>
+    <xacro:property name="tip_y" value="${(hub_radius + arm_length)*sin(a)}"/>
+
+    <link name="${prefix}arm_${index}_link">
+      <visual>
+        <geometry>
+          <box size="${arm_length} ${arm_width} ${arm_height}"/>
+        </geometry>
+        <material name="drone_arm_color"/>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="${arm_length} ${arm_width} ${arm_height}"/>
+        </geometry>
+      </collision>
+      <xacro:box_inertial mass="${arm_mass}" x="${arm_length}" y="${arm_width}" z="${arm_height}"/>
+    </link>
+
+    <joint name="${prefix}arm_${index}_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}arm_${index}_link"/>
+      <origin xyz="${arm_x} ${arm_y} 0.0" rpy="0 0 ${a}"/>
+    </joint>
+
+    <link name="${prefix}motor_${index}_link">
+      <visual>
+        <geometry>
+          <cylinder radius="${motor_radius}" length="${motor_height}"/>
+        </geometry>
+        <material name="drone_motor_color"/>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder radius="${motor_radius}" length="${motor_height}"/>
+        </geometry>
+      </collision>
+      <xacro:cylinder_inertial mass="${motor_mass}" r="${motor_radius}" l="${motor_height}"/>
+    </link>
+
+    <joint name="${prefix}motor_${index}_joint" type="fixed">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}motor_${index}_link"/>
+      <origin xyz="${tip_x} ${tip_y} ${motor_height/2.0}" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Static (non-rotating) propeller disc representation -->
+    <link name="${prefix}prop_${index}_link">
+      <visual>
+        <geometry>
+          <cylinder radius="${prop_radius}" length="${prop_height}"/>
+        </geometry>
+        <material name="drone_prop_color"/>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder radius="${prop_radius}" length="${prop_height}"/>
+        </geometry>
+      </collision>
+      <xacro:cylinder_inertial mass="${prop_mass}" r="${prop_radius}" l="${prop_height}"/>
+    </link>
+
+    <joint name="${prefix}prop_${index}_joint" type="fixed">
+      <parent link="${prefix}motor_${index}_link"/>
+      <child link="${prefix}prop_${index}_link"/>
+      <origin xyz="0 0 ${motor_height/2.0 + prop_height/2.0}" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- Quad-X layout: four rotor assemblies at 45/135/225/315 degrees -->
+  <xacro:rotor_assembly index="0" angle_deg="45"/>
+  <xacro:rotor_assembly index="1" angle_deg="135"/>
+  <xacro:rotor_assembly index="2" angle_deg="225"/>
+  <xacro:rotor_assembly index="3" angle_deg="315"/>
+
+</robot>

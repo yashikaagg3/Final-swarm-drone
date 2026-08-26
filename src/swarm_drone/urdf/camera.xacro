@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<!--
+  Single front-mounted RGB camera. No LiDAR/depth sensors.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="camera_size" value="0.02"/>
+  <xacro:property name="camera_mass" value="0.01"/>
+
+  <material name="drone_camera_color">
+    <color rgba="0.05 0.05 0.05 1.0"/>
+  </material>
+
+  <link name="${prefix}camera_link">
+    <visual>
+      <geometry>
+        <box size="${camera_size} ${camera_size*1.4} ${camera_size}"/>
+      </geometry>
+      <material name="drone_camera_color"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${camera_size} ${camera_size*1.4} ${camera_size}"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertial mass="${camera_mass}" x="${camera_size}" y="${camera_size*1.4}" z="${camera_size}"/>
+  </link>
+
+  <joint name="${prefix}camera_joint" type="fixed">
+    <parent link="${prefix}base_link"/>
+    <child link="${prefix}camera_link"/>
+    <origin xyz="${body_length/2.0 + camera_size/2.0} 0 ${-body_height/4.0}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="${prefix}camera_optical_link"/>
+
+  <joint name="${prefix}camera_optical_joint" type="fixed">
+    <parent link="${prefix}camera_link"/>
+    <child link="${prefix}camera_optical_link"/>
+    <!-- Rotate to standard optical-frame convention (x-right, y-down, z-forward) -->
+    <origin xyz="0 0 0" rpy="${-pi/2.0} 0 ${-pi/2.0}"/>
+  </joint>
+
+  <gazebo reference="${prefix}camera_link">
+    <sensor name="${prefix}rgb_camera" type="camera">
+      <pose>0 0 0 0 0 0</pose>
+      <camera>
+        <horizontal_fov>1.047</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.05</near>
+          <far>100.0</far>
+        </clip>
+      </camera>
+      <always_on>1</always_on>
+      <update_rate>15</update_rate>
+      <visualize>true</visualize>
+      <topic>${prefix}camera/image_raw</topic>
+    </sensor>
+  </gazebo>
+
+</robot>

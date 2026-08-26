@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!--
+  Gazebo (Ignition/gz-sim Fortress) control interface.
+
+  Deliberately simple and kinematic: no rotor thrust physics, no
+  MulticopterMotorModel. A VelocityControl system lets DroneController
+  (swarm_drone/drone_controller.py) command the model's body velocity
+  directly, and an OdometryPublisher reports pose/twist back to ROS 2.
+  This keeps swarm logic decoupled from the simulated flight backend so
+  the bottom layer can later be swapped for MAVROS/PX4 without touching
+  leader/follower/coverage code - see DroneController.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <gazebo>
+    <plugin filename="ignition-gazebo-velocity-control-system"
+            name="gz::sim::systems::VelocityControl">
+    </plugin>
+
+    <plugin filename="ignition-gazebo-odometry-publisher-system"
+            name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>${prefix}odom</odom_frame>
+      <robot_base_frame>${prefix}base_link</robot_base_frame>
+      <dimensions>3</dimensions>
+      <odom_publish_frequency>30</odom_publish_frequency>
+    </plugin>
+  </gazebo>
+
+</robot>

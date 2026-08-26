@@ -1,0 +1,49 @@
+# Central configuration for the swarm_drone package.
+# All swarm/mission parameters live here - nothing important should be
+# hard-coded in the Python nodes.
+
+swarm:
+  num_drones: 4
+  leader_id: 0
+  # Seconds to wait for a follower ack before the leader reports it unresponsive.
+  ack_timeout_sec: 10.0
+  # Seconds without a /drone_i/state message before the leader considers a drone lost.
+  heartbeat_timeout_sec: 5.0
+
+mapping_area:
+  min_x: -10.0
+  max_x: 10.0
+  min_y: -10.0
+  max_y: 10.0
+
+takeoff:
+  x: 0.0
+  y: 0.0
+  z: 0.0
+  flight_altitude: 5.0
+  # Drones spawn stacked at the same logical takeoff point; each drone i is
+  # given a small spawn-only offset of i * spawn_ring_spacing meters so
+  # Gazebo doesn't spawn overlapping bodies. Takeoff itself is also
+  # staggered stagger_delay_sec apart per drone_id: this isn't just about
+  # the spawn ring - a drone's straight-line transit toward its assigned
+  # region can otherwise cross another drone's transit path near the
+  # center of the map at the same time and collide mid-flight. A large
+  # stagger keeps takeoffs (and therefore transits) from overlapping.
+  spawn_ring_spacing: 2.0
+  stagger_delay_sec: 9.0
+
+coverage:
+  waypoint_spacing: 1.0
+  boundary_margin: 0.5
+  # Linear speed (m/s) used while flying between coverage waypoints.
+  cruise_speed: 1.0
+  # Distance (m) within which a waypoint counts as reached.
+  waypoint_tolerance: 0.3
+
+simulation:
+  use_sim_time: true
+  world_name: mapping_world
+
+testing:
+  enabled: false
+  test_drone_id: 0
