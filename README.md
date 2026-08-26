@@ -180,11 +180,15 @@ Two ways:
    ros2 run swarm_drone leader --ros-args -r __ns:=/drone_0
    ros2 topic echo /drone_2/state
    ```
-   Or set `testing.enabled: true` and `testing.test_drone_id` in
-   `config/swarm.yaml` and use `launch/teleop.launch.py` to fly that
-   drone manually with the keyboard:
+   Or fly a drone manually with the keyboard. `ros2 launch` can't host
+   an interactive keyboard tool (it doesn't give child processes a real
+   terminal on stdin, so `teleop_twist_keyboard` fails with
+   `termios.error: Inappropriate ioctl for device` if launched that
+   way) - `ros2 launch swarm_drone teleop.launch.py drone_id:=2` prints
+   the exact command to run instead:
    ```bash
-   ros2 launch swarm_drone teleop.launch.py drone_id:=2
+   ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/drone_2/cmd_vel
+   # i/j/k/l/,/u/o to move, q/z to change speed, k to stop
    ```
 
 ## Changing the number of drones
