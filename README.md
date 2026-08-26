@@ -104,11 +104,14 @@ sudo apt install ros-humble-desktop ros-humble-ros-gz-bridge ros-humble-ros-gz-s
 
 ## Installation & building
 
+This repo itself is the colcon workspace root (the package lives at
+`src/swarm_drone` inside it) - no extra wrapper folder needed. Clone it
+wherever you like; the examples below assume `~/swarm_drone`, adjust the
+path if you put it somewhere else.
+
 ```bash
-mkdir -p ~/swarm_ws/src
-cd ~/swarm_ws/src
-git clone <this-repo-url> swarm_drone   # or copy this package in
-cd ~/swarm_ws
+git clone <this-repo-url> ~/swarm_drone
+cd ~/swarm_drone
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install
 source install/setup.bash
@@ -119,7 +122,7 @@ source install/setup.bash
 **Terminal 1 - Gazebo + drones:**
 
 ```bash
-source ~/swarm_ws/install/setup.bash
+source ~/swarm_drone/install/setup.bash
 ros2 launch swarm_drone simulation.launch.py
 ```
 
@@ -138,7 +141,7 @@ ros2 launch swarm_drone simulation.launch.py
 **Terminal 2 - autonomous swarm mission:**
 
 ```bash
-source ~/swarm_ws/install/setup.bash
+source ~/swarm_drone/install/setup.bash
 ros2 launch swarm_drone auto.launch.py
 ```
 
@@ -150,7 +153,7 @@ assignment + acks, takeoff, coverage, and `SWARM MISSION COMPLETE`.
 **Terminal 3 - RViz (optional):**
 
 ```bash
-source ~/swarm_ws/install/setup.bash
+source ~/swarm_drone/install/setup.bash
 rviz2 -d $(ros2 pkg prefix swarm_drone)/share/swarm_drone/rviz/swarm.rviz
 ```
 
@@ -163,7 +166,7 @@ Two ways:
 
 1. **Unit-test the algorithms** (no Gazebo needed):
    ```bash
-   cd ~/swarm_ws
+   cd ~/swarm_drone
    PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 colcon test --packages-select swarm_drone
    colcon test-result --verbose
    ```
