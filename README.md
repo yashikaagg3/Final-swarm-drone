@@ -157,8 +157,25 @@ source ~/swarm_drone/install/setup.bash
 rviz2 -d $(ros2 pkg prefix swarm_drone)/share/swarm_drone/rviz/swarm.rviz
 ```
 
-Shows drone positions/ids/roles, region boundaries + ids, and coverage
-waypoints via `/swarm/markers`, plus drone_0's robot model/TF.
+Start this only after both Terminal 1 (Gazebo) and Terminal 2
+(`auto.launch.py`) are already running, since RViz just visualizes their
+topics. Verified working: you should see, per drone -
+
+- A colored sphere at its live position (bigger sphere = the leader),
+  driven directly by `/drone_<i>/state`'s reported position - so it
+  tracks the drone's real position even if you fly it manually with
+  `teleop.launch.py` and take it outside its own region.
+- A text label above it: `D<id> [ROLE] <STATE> <progress>%`.
+- Its region boundary as a colored rectangle outline, with a `Region
+  <id>` label at its center - 4 quadrants for the default 4-drone/2x2
+  grid.
+- Its planned lawnmower waypoints as small dots filling that rectangle.
+- `drone_0`'s robot model + TF frame (RViz is configured to show
+  `/drone_0/robot_description`).
+
+All of the above comes from `/swarm/markers` (published by
+`marker_manager`) except the robot model/TF, which comes straight from
+`robot_state_publisher`/Gazebo.
 
 ## Testing an individual drone
 
