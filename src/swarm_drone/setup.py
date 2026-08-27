@@ -45,6 +45,9 @@ setup(
             'follower = swarm_drone.follower:main',
             'marker_manager = swarm_drone.marker_manager:main',
             'task_monitor = swarm_drone.task_monitor:main',
+            'mission_cli = swarm_drone.mission_cli:main',
+            'manual_control = swarm_drone.manual_control:main',
+            'spawner = swarm_drone.spawner:main',
         ],
     },
 )

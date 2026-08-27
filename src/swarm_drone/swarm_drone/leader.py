@@ -27,6 +27,7 @@ _STILL_WAITING = {None, DroneState.INITIALIZING.value, DroneState.WAITING_FOR_TA
 class LeaderState(str, Enum):
     INITIALIZING = 'INITIALIZING'
     WAITING_FOR_SWARM = 'WAITING_FOR_SWARM'
+    WAITING_FOR_GOAL = 'WAITING_FOR_GOAL'
     ALLOCATING_TASKS = 'ALLOCATING_TASKS'
     WAITING_FOR_ACK = 'WAITING_FOR_ACK'
     MISSION_RUNNING = 'MISSION_RUNNING'
@@ -39,6 +40,7 @@ class LeaderNode(Node):
     def __init__(self):
         super().__init__('leader')
         self.declare_parameter('config_path', default_config_path())
+        self.declare_parameter('auto_start', True)
         config = SwarmConfig.from_yaml_file(self.get_parameter('config_path').value)
         self.config = config
 
@@ -51,6 +53,11 @@ class LeaderNode(Node):
         self._assignment_republish_period = 1.0
         self._ever_completed = set()
         self._warned_stale = set()
+        self._overridden_drones = set()
+
+        from std_msgs.msg import String
+        self.create_subscription(String, '/swarm/goal', self._on_goal_received, 10)
+        self.create_subscription(String, '/swarm/manual_override', self._on_manual_override, 10)
 
         self.create_timer(0.5, self._tick)
         self.get_logger().info(
@@ -85,8 +92,52 @@ class LeaderNode(Node):
         for follower_id in self._follower_ids():
             if self.task_manager.state_of(follower_id) is None:
                 return  # haven't heard from this follower yet
-        self.get_logger().info('All drones ready.')
-        self.state = LeaderState.ALLOCATING_TASKS
+        auto_start = self.get_parameter('auto_start').value
+        if auto_start:
+            self.get_logger().info('All drones ready. Starting task allocation (auto_start=True).')
+            self.state = LeaderState.ALLOCATING_TASKS
+        else:
+            self.get_logger().info('All drones ready. Waiting for mission goal via mission_cli...')
+            self.state = LeaderState.WAITING_FOR_GOAL
+
+    def _on_goal_received(self, msg):
+        import json
+        if self.state in (LeaderState.WAITING_FOR_SWARM, LeaderState.WAITING_FOR_GOAL):
+            try:
+                data = json.loads(msg.data)
+                self.config.min_x = float(data.get('min_x', self.config.min_x))
+                self.config.max_x = float(data.get('max_x', self.config.max_x))
+                self.config.min_y = float(data.get('min_y', self.config.min_y))
+                self.config.max_y = float(data.get('max_y', self.config.max_y))
+                self.config.flight_altitude = float(
+                    data.get('flight_altitude', self.config.flight_altitude))
+                self.config.waypoint_spacing = float(
+                    data.get('waypoint_spacing', self.config.waypoint_spacing))
+                if 'cruise_speed' in data:
+                    self.config.cruise_speed = float(data['cruise_speed'])
+                self.get_logger().info(
+                    f'Received Goal: Area=[{self.config.min_x}, {self.config.max_x}] x '
+                    f'[{self.config.min_y}, {self.config.max_y}].')
+                self.state = LeaderState.ALLOCATING_TASKS
+            except Exception as e:
+                self.get_logger().error(f'Failed to parse mission goal JSON: {e}')
+
+    def _on_manual_override(self, msg):
+        import json
+        try:
+            data = json.loads(msg.data)
+            drone_id = int(data['drone_id'])
+            action = str(data['action'])
+            if action == 'override':
+                self._overridden_drones.add(drone_id)
+                self.get_logger().warn(
+                    f'Drone {drone_id} is manually overridden! Pausing progress tracking.')
+            elif action == 'resume':
+                self._overridden_drones.discard(drone_id)
+                self.get_logger().info(
+                    f'Drone {drone_id} manual control released. Resuming progress tracking.')
+        except Exception as e:
+            self.get_logger().error(f'Error processing manual override message: {e}')
 
     def _tick_allocating_tasks(self, now):
         regions = allocate_regions(
@@ -124,13 +175,19 @@ class LeaderNode(Node):
         return True
 
     def _tick_monitoring(self):
-        if self.mission.state.value in _COMPLETED_OR_LATER:
+        leader_done = (
+            self.mission.state.value in _COMPLETED_OR_LATER
+            and self.config.leader_id not in self._overridden_drones)
+        if leader_done:
             self._ever_completed.add(self.config.leader_id)
         for follower_id in self._follower_ids():
-            if self.task_manager.state_of(follower_id) in _COMPLETED_OR_LATER:
+            follower_done = (
+                follower_id not in self._overridden_drones
+                and self.task_manager.state_of(follower_id) in _COMPLETED_OR_LATER)
+            if follower_done:
                 self._ever_completed.add(follower_id)
 
-        if len(self._ever_completed) == self.config.num_drones:
+        if len(self._ever_completed) == self.config.num_drones and not self._overridden_drones:
             self.get_logger().info('SWARM MISSION COMPLETE')
             self.state = LeaderState.MISSION_COMPLETE
 
@@ -156,7 +213,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

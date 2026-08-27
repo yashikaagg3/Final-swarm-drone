@@ -1,23 +1,21 @@
 """
-Starts Gazebo and spawns swarm.num_drones drones with unique namespaces.
+Unified launch file for the swarm_drone package.
 
-Loads the mapping world and spawns drones (from config/swarm.yaml) into
-namespaces /drone_<i>, each with its own robot_state_publisher and
-ros_gz_bridge topics.
+Launches:
+ 1. Gazebo Fortress simulation with mapping_world.sdf and clock bridge.
+ 2. Spawns all drones with URDF, state publishers, topic bridges, and static TFs.
+ 3. Leader node (configured with auto_start=false so it waits for mission goal CLI input).
+ 4. Follower nodes for all non-leader drones.
+ 5. marker_manager (RViz visualization) and task_monitor (transcript logger).
 
-Drones would logically all start from the same takeoff point, but
-spawning multiple physical bodies at exactly the same position causes
-Gazebo collisions - each drone is spawned on a small ring around the
-takeoff point, staggered in time, and converges to the shared point
-once follower/leader logic commands takeoff (see follower.py).
+The drones spawn and sit on the ground ready until mission_cli is run!
 """
 
-import math
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, OpaqueFunction, TimerAction
+from launch.actions import ExecuteProcess, OpaqueFunction
 from launch_ros.actions import Node
 import xacro
 import yaml
@@ -25,17 +23,16 @@ import yaml
 
 def launch_setup(context, *args, **kwargs):
     pkg_share = get_package_share_directory('swarm_drone')
+    config_path = os.path.join(pkg_share, 'config', 'swarm.yaml')
 
-    with open(os.path.join(pkg_share, 'config', 'swarm.yaml'), 'r') as f:
+    with open(config_path, 'r') as f:
         cfg = yaml.safe_load(f)
 
     num_drones = int(cfg['swarm']['num_drones'])
+    leader_id = int(cfg['swarm']['leader_id'])
     if num_drones < 1:
         raise RuntimeError(f'swarm.num_drones must be >= 1, got {num_drones}')
 
-    takeoff = cfg['takeoff']
-    base_x, base_y, base_z = float(takeoff['x']), float(takeoff['y']), float(takeoff['z'])
-    ring_spacing = float(takeoff.get('spawn_ring_spacing', 0.5))
     use_sim_time = bool(cfg.get('simulation', {}).get('use_sim_time', True))
     world_name = str(cfg.get('simulation', {}).get('world_name', 'mapping_world'))
 
@@ -43,9 +40,14 @@ def launch_setup(context, *args, **kwargs):
     xacro_path = os.path.join(pkg_share, 'urdf', 'robot.urdf.xacro')
 
     actions = [
+        # 1. Primary simulation engine & world clock
         ExecuteProcess(
             cmd=['ign', 'gazebo', '-r', world_path],
-            additional_env={'IGN_IP': '127.0.0.1'},
+            additional_env={
+                'IGN_IP': '127.0.0.1',
+                'MESA_GL_VERSION_OVERRIDE': '3.3',
+                'QT_X11_NO_MITSHM': '1',
+            },
             output='screen',
         ),
         Node(
@@ -56,23 +58,19 @@ def launch_setup(context, *args, **kwargs):
             remappings=[(f'/world/{world_name}/clock', '/clock')],
             output='screen',
         ),
+        # 2. Priority entity spawner (spawns drones into Gazebo immediately)
+        Node(
+            package='swarm_drone', executable='spawner', name='spawner',
+            additional_env={'IGN_IP': '127.0.0.1'},
+            parameters=[{'config_path': config_path, 'use_sim_time': use_sim_time}],
+            output='screen',
+        ),
     ]
 
-    spawn_stagger_sec = 3.0
-
+    # 3. Setup robot state publishers, topic bridges, and TFs for each drone
     for i in range(num_drones):
         name = f'drone_{i}'
         prefix = f'{name}_'
-
-        # Spawn on a small ring around the logical takeoff point so bodies
-        # don't overlap; drones converge to the real takeoff point on command.
-        if num_drones == 1:
-            sx, sy = base_x, base_y
-        else:
-            angle = 2.0 * math.pi * i / num_drones
-            sx = base_x + ring_spacing * math.cos(angle)
-            sy = base_y + ring_spacing * math.sin(angle)
-        sz = base_z + 0.3
 
         robot_description = xacro.process_file(
             xacro_path, mappings={'prefix': prefix}).toxml()
@@ -83,18 +81,6 @@ def launch_setup(context, *args, **kwargs):
             namespace=name,
             name='robot_state_publisher',
             parameters=[{'robot_description': robot_description, 'use_sim_time': use_sim_time}],
-        )
-
-        spawn = ExecuteProcess(
-            cmd=[
-                'ros2', 'run', 'ros_gz_sim', 'create',
-                '-world', world_name,
-                '-string', robot_description,
-                '-name', name,
-                '-x', str(sx), '-y', str(sy), '-z', str(sz),
-            ],
-            additional_env={'IGN_IP': '127.0.0.1'},
-            output='screen',
         )
 
         bridge = Node(
@@ -118,9 +104,6 @@ def launch_setup(context, *args, **kwargs):
             output='screen',
         )
 
-        # OdometryPublisher reports each drone's pose directly in world
-        # coordinates, so "map" and "<prefix>odom" coincide - publish that
-        # as a static identity transform so RViz can resolve robot models.
         static_tf = Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -134,11 +117,47 @@ def launch_setup(context, *args, **kwargs):
             parameters=[{'use_sim_time': use_sim_time}],
         )
 
-        # Stagger spawns in time (on top of the ring offset) to give Gazebo's
-        # physics a clean step between each new body being introduced.
-        spawn_time = i * spawn_stagger_sec + 2.0
-        actions.append(TimerAction(period=spawn_time, actions=[spawn]))
-        actions.append(TimerAction(period=spawn_time, actions=[rsp, bridge, static_tf]))
+        actions.append(rsp)
+        actions.append(bridge)
+        actions.append(static_tf)
+
+    # 4. Swarm orchestration and management nodes
+    actions.append(Node(
+        package='swarm_drone', executable='leader', name='leader',
+        namespace=f'drone_{leader_id}',
+        parameters=[{
+            'config_path': config_path,
+            'use_sim_time': use_sim_time,
+            'auto_start': False,
+        }],
+        output='screen',
+    ))
+
+    actions.append(Node(
+        package='swarm_drone', executable='marker_manager', name='marker_manager',
+        parameters=[{'config_path': config_path, 'use_sim_time': use_sim_time}],
+        output='screen',
+    ))
+
+    actions.append(Node(
+        package='swarm_drone', executable='task_monitor', name='task_monitor',
+        parameters=[{'config_path': config_path, 'use_sim_time': use_sim_time}],
+        output='screen',
+    ))
+
+    for drone_id in range(num_drones):
+        if drone_id == leader_id:
+            continue
+        actions.append(Node(
+            package='swarm_drone', executable='follower', name=f'follower_{drone_id}',
+            namespace=f'drone_{drone_id}',
+            parameters=[{
+                'drone_id': drone_id,
+                'config_path': config_path,
+                'use_sim_time': use_sim_time,
+            }],
+            output='screen',
+        ))
 
     return actions
 

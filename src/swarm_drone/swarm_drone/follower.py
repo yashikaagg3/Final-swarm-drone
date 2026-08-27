@@ -36,6 +36,7 @@ class DroneState(str, Enum):
     COMPLETED = 'COMPLETED'
     LANDING = 'LANDING'
     IDLE = 'IDLE'
+    MANUAL_OVERRIDE = 'MANUAL_OVERRIDE'
 
 
 class DroneMission:
@@ -47,6 +48,7 @@ class DroneMission:
         self.state = DroneState.INITIALIZING
         self.region = None
         self.waypoints = []
+        self._pre_override_state = None
 
         self._node = node
         self._config = config
@@ -57,12 +59,43 @@ class DroneMission:
             node, cruise_speed=config.cruise_speed, waypoint_tolerance=config.waypoint_tolerance)
         self._state_pub = node.create_publisher(String, 'state', 10)
 
+        node.create_subscription(String, '/swarm/manual_override', self._on_manual_override, 10)
         node.create_timer(1.0 / state_rate_hz, self._publish_state)
         node.create_timer(1.0 / tick_rate_hz, self._tick)
 
         # Nothing to actually initialize (no sensors to calibrate) - go
         # straight to waiting for the leader's task assignment.
         self.state = DroneState.WAITING_FOR_TASK
+
+    def _on_manual_override(self, msg):
+        try:
+            data = json.loads(msg.data)
+            if data.get('drone_id') != self.drone_id:
+                return
+            action = data.get('action')
+            if action == 'override':
+                if self.state != DroneState.MANUAL_OVERRIDE:
+                    self._pre_override_state = self.state
+                self.state = DroneState.MANUAL_OVERRIDE
+                self.controller.stop()
+                self._node.get_logger().warn(
+                    f'Drone {self.drone_id} entered MANUAL OVERRIDE mode.')
+            elif action == 'resume':
+                self._node.get_logger().info(
+                    f'Drone {self.drone_id} override released. '
+                    f'Resuming waypoint {self._waypoint_index}.')
+                if self.waypoints and self._waypoint_index < len(self.waypoints):
+                    is_start = (self._waypoint_index == 0)
+                    self.state = DroneState.GOING_TO_REGION if is_start else DroneState.COVERING
+                    self._go_to_next_waypoint()
+                elif self.waypoints and self._waypoint_index >= len(self.waypoints):
+                    self.state = DroneState.COMPLETED
+                else:
+                    self.state = (
+                        self._pre_override_state if self._pre_override_state
+                        else DroneState.WAITING_FOR_TASK)
+        except Exception as e:
+            self._node.get_logger().error(f'Error processing manual override message: {e}')
 
     def assign_region(self, region: Region):
         if self.state != DroneState.WAITING_FOR_TASK:
@@ -173,7 +206,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
