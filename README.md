@@ -264,6 +264,13 @@ line up with those markers anymore.
 
 ## Troubleshooting
 
+- **RViz opens but shows nothing at all (empty Displays, no drones)**:
+  this isn't an RViz problem - RViz never caches anything, it only shows
+  what's live right now. It means `simulation.launch.py` and/or
+  `auto.launch.py` aren't actually running in another terminal (not
+  started yet, closed, or crashed). Confirm with `ros2 topic list` -
+  if you don't see `/swarm/markers` and `/drone_0/state` in the output,
+  start (or restart) those two launches first, then open RViz.
 - **Nothing moves / all topics silent, no errors**: check for
   `libEGL`/DRI2 failures in the Gazebo log - see `LIBGL_ALWAYS_SOFTWARE=1`
   above. This failure mode is silent: Gazebo's whole step loop stalls,
