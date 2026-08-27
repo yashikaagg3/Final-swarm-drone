@@ -48,7 +48,6 @@ class SpawnerNode(Node):
         xacro_path = os.path.join(pkg_share, 'urdf', 'robot.urdf.xacro')
 
         env = os.environ.copy()
-        env['IGN_IP'] = '127.0.0.1'
 
         for i in range(num_drones):
             name = f'drone_{i}'

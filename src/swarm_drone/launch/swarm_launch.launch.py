@@ -43,8 +43,10 @@ def launch_setup(context, *args, **kwargs):
         # 1. Primary simulation engine & world clock
         ExecuteProcess(
             cmd=['ign', 'gazebo', '-r', world_path],
+            # No IGN_IP: Ignition Transport discovers over UDP multicast, and the
+            # loopback interface has no MULTICAST flag, so pinning it to 127.0.0.1
+            # makes the create/state services intermittently unreachable.
             additional_env={
-                'IGN_IP': '127.0.0.1',
                 'MESA_GL_VERSION_OVERRIDE': '3.3',
                 'QT_X11_NO_MITSHM': '1',
             },
@@ -61,7 +63,6 @@ def launch_setup(context, *args, **kwargs):
         # 2. Priority entity spawner (spawns drones into Gazebo immediately)
         Node(
             package='swarm_drone', executable='spawner', name='spawner',
-            additional_env={'IGN_IP': '127.0.0.1'},
             parameters=[{'config_path': config_path, 'use_sim_time': use_sim_time}],
             output='screen',
         ),
@@ -91,12 +92,16 @@ def launch_setup(context, *args, **kwargs):
             arguments=[
                 f'/model/{name}/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
                 f'/model/{name}/odometry@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
+                # OdometryPublisher emits odom->base_link here; without it the TF
+                # tree is split and RViz cannot place the robot models.
+                f'/model/{name}/pose@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V',
                 f'/{prefix}camera/image_raw@sensor_msgs/msg/Image[ignition.msgs.Image',
                 f'/{prefix}camera/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo',
             ],
             remappings=[
                 (f'/model/{name}/cmd_vel', 'cmd_vel'),
                 (f'/model/{name}/odometry', 'odom'),
+                (f'/model/{name}/pose', '/tf'),
                 (f'/{prefix}camera/image_raw', 'camera/image_raw'),
                 (f'/{prefix}camera/camera_info', 'camera/camera_info'),
             ],

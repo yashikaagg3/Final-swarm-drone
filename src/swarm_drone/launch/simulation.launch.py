@@ -45,7 +45,6 @@ def launch_setup(context, *args, **kwargs):
     actions = [
         ExecuteProcess(
             cmd=['ign', 'gazebo', '-r', world_path],
-            additional_env={'IGN_IP': '127.0.0.1'},
             output='screen',
         ),
         Node(
@@ -93,7 +92,6 @@ def launch_setup(context, *args, **kwargs):
                 '-name', name,
                 '-x', str(sx), '-y', str(sy), '-z', str(sz),
             ],
-            additional_env={'IGN_IP': '127.0.0.1'},
             output='screen',
         )
 
