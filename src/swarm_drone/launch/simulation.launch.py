@@ -44,15 +44,15 @@ def launch_setup(context, *args, **kwargs):
 
     actions = [
         ExecuteProcess(
-            cmd=['ign', 'gazebo', '-r', world_path],
-            additional_env={'IGN_IP': '127.0.0.1', 'LIBGL_ALWAYS_SOFTWARE': '1'},
+            cmd=['gz', 'sim', '-r', world_path],
+            additional_env={'GZ_IP': '127.0.0.1', 'LIBGL_ALWAYS_SOFTWARE': '1'},
             output='screen',
         ),
         Node(
             package='ros_gz_bridge',
             executable='parameter_bridge',
             name='clock_bridge',
-            arguments=[f'/world/{world_name}/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock'],
+            arguments=[f'/world/{world_name}/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
             remappings=[(f'/world/{world_name}/clock', '/clock')],
             output='screen',
         ),
@@ -93,7 +93,7 @@ def launch_setup(context, *args, **kwargs):
                 '-name', name,
                 '-x', str(sx), '-y', str(sy), '-z', str(sz),
             ],
-            additional_env={'IGN_IP': '127.0.0.1'},
+            additional_env={'GZ_IP': '127.0.0.1'},
             output='screen',
         )
 
@@ -103,10 +103,10 @@ def launch_setup(context, *args, **kwargs):
             namespace=name,
             name='gz_bridge',
             arguments=[
-                f'/model/{name}/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
-                f'/model/{name}/odometry@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
-                f'/{prefix}camera/image_raw@sensor_msgs/msg/Image[ignition.msgs.Image',
-                f'/{prefix}camera/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo',
+                f'/model/{name}/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist',
+                f'/model/{name}/odometry@nav_msgs/msg/Odometry[gz.msgs.Odometry',
+                f'/{prefix}camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
+                f'/{prefix}camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             ],
             remappings=[
                 (f'/model/{name}/cmd_vel', 'cmd_vel'),

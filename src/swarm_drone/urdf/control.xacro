@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!--
-  Gazebo (Ignition/gz-sim Fortress) control interface.
+  Gazebo (gz-sim Harmonic) control interface.
 
   Deliberately simple and kinematic: no rotor thrust physics, no
   MulticopterMotorModel. A VelocityControl system lets DroneController
@@ -13,11 +13,11 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <gazebo>
-    <plugin filename="ignition-gazebo-velocity-control-system"
+    <plugin filename="gz-sim-velocity-control-system"
             name="gz::sim::systems::VelocityControl">
     </plugin>
 
-    <plugin filename="ignition-gazebo-odometry-publisher-system"
+    <plugin filename="gz-sim-odometry-publisher-system"
             name="gz::sim::systems::OdometryPublisher">
       <odom_frame>${prefix}odom</odom_frame>
       <robot_base_frame>${prefix}base_link</robot_base_frame>

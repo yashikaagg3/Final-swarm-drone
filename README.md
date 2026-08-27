@@ -1,6 +1,6 @@
 # swarm_drone
 
-A ROS 2 Humble + Gazebo (Ignition Fortress) simulation of a drone swarm
+A ROS 2 Jazzy + Gazebo Harmonic simulation of a drone swarm
 performing autonomous, leader-coordinated area coverage. One drone is
 the leader (also an active drone), the rest are followers; the leader
 divides the mapping area into roughly equal regions, assigns one to
@@ -81,25 +81,27 @@ WAITING_FOR_ACK -> MISSION_RUNNING -> MONITORING -> MISSION_COMPLETE`
 
 ## Environment this was built/verified against
 
-- Ubuntu 22.04.5 LTS, ROS 2 Humble, Python 3.10.
-- Gazebo: **Ignition Gazebo Fortress (gz-sim 6.18.0)**, via `ign gazebo`. This
-  machine also has `gz` (Harmonic 8.15) installed, but the ROS bridge
-  packages (`ros-humble-ros-gz-*`) are linked against Fortress
-  (`ignition-transport11`/`ignition-msgs8`), so Fortress is what actually
-  works with `ros2 run ros_gz_bridge` / `ros2 run ros_gz_sim create` here.
-  If your installed `ros-humble-ros-gz-*` is built for Harmonic instead,
-  the launch files should still work unmodified since they only call the
-  `ign`/`ros2 run ros_gz_sim` CLIs - just make sure `GZ_VERSION` matches
-  what's actually installed.
-- Control: `ignition-gazebo-velocity-control-system` (kinematic body
-  velocity control, no rotor thrust physics) + `ignition-gazebo-odometry-publisher-system`.
+- Ubuntu 24.04 LTS, ROS 2 Jazzy, Python 3.12.
+- Gazebo: **Gazebo Harmonic**, via `gz sim`. This is the branch (`ros2-jazzy`)
+  of the project ported from the original Humble/Gazebo Fortress build
+  (see `main`) - the plugin names, environment variables, and
+  `ros_gz_bridge` message-type strings below are all Harmonic's, not
+  Fortress's, and are **not** interchangeable between the two branches.
+- Control: `gz-sim-velocity-control-system` (kinematic body velocity
+  control, no rotor thrust physics) + `gz-sim-odometry-publisher-system`.
+  World plugins (`worlds/mapping_world.sdf`) use the same `gz-sim-*`
+  naming: `gz-sim-physics-system`, `gz-sim-user-commands-system`,
+  `gz-sim-scene-broadcaster-system`, `gz-sim-sensors-system`.
+- `ros_gz_bridge` arguments reference `gz.msgs.*` types (e.g.
+  `gz.msgs.Twist`), not Fortress's `ignition.msgs.*` - and `GZ_IP` is
+  used instead of `IGN_IP`, matching Harmonic's env var naming.
 
 ## Dependencies
 
 ```
-sudo apt install ros-humble-desktop ros-humble-ros-gz-bridge ros-humble-ros-gz-sim \
-  ros-humble-robot-state-publisher ros-humble-joint-state-publisher ros-humble-xacro \
-  ros-humble-teleop-twist-keyboard python3-yaml python3-pytest
+sudo apt install ros-jazzy-desktop ros-jazzy-ros-gz-bridge ros-jazzy-ros-gz-sim \
+  ros-jazzy-robot-state-publisher ros-jazzy-joint-state-publisher ros-jazzy-xacro \
+  ros-jazzy-teleop-twist-keyboard python3-yaml python3-pytest
 ```
 
 ## Installation & building
@@ -112,7 +114,7 @@ path if you put it somewhere else.
 ```bash
 git clone <this-repo-url> ~/swarm_drone
 cd ~/swarm_drone
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -125,7 +127,7 @@ add both to `~/.bashrc` (adjust the path if you cloned somewhere other
 than `~/swarm_drone`):
 
 ```bash
-echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
 echo '[ -f ~/swarm_drone/install/setup.bash ] && source ~/swarm_drone/install/setup.bash' >> ~/.bashrc
 ```
 
