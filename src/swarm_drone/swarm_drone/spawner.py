@@ -23,12 +23,13 @@ class SpawnerNode(Node):
         super().__init__('spawner')
         self.get_logger().info('Spawner node started. Preparing to spawn swarm into Gazebo...')
 
-    def _model_exists(self, world_name, name, env):
+    def _model_exists(self, name, env):
         # `create` exits 0 and logs to stderr even when its request times out,
         # so the world itself is the only trustworthy source of truth.
+        # Fortress's `ign model` takes no world flag; it resolves the world itself.
         try:
             proc = subprocess.run(
-                ['ign', 'model', '--list', '-w', world_name],
+                ['ign', 'model', '--list'],
                 capture_output=True, text=True, env=env, timeout=10)
         except subprocess.TimeoutExpired:
             return False
@@ -77,7 +78,7 @@ class SpawnerNode(Node):
                     '-x', str(sx), '-y', str(sy), '-z', str(sz),
                 ]
                 proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-                if self._model_exists(world_name, name, env):
+                if self._model_exists(name, env):
                     self.get_logger().info(f'[SUCCESS] {name} spawned cleanly!')
                     spawned = True
                     break
