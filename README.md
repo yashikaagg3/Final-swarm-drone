@@ -117,6 +117,22 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
+Tip: the `source` lines above are only needed once per terminal because
+sourcing sets environment variables (`PATH`, `PYTHONPATH`,
+`AMENT_PREFIX_PATH`, ...) that don't persist across shells - every new
+terminal starts without them. To skip typing them in every new terminal,
+add both to `~/.bashrc` (adjust the path if you cloned somewhere other
+than `~/swarm_drone`):
+
+```bash
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+echo '[ -f ~/swarm_drone/install/setup.bash ] && source ~/swarm_drone/install/setup.bash' >> ~/.bashrc
+```
+
+This is a local shell setting, not part of the repo, so it only affects
+your own machine - it won't change what anyone else needs to run after
+cloning this repo fresh.
+
 ## Running
 
 **Terminal 1 - Gazebo + drones:**
