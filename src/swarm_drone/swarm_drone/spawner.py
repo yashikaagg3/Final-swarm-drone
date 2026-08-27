@@ -1,7 +1,8 @@
 """
 Robust drone spawner node.
 
-Waits until the Gazebo creation service is online before spawning drones sequentially.
+Spawns drones sequentially, retrying each one until it actually shows up in
+the running world.
 """
 
 import math
@@ -21,6 +22,18 @@ class SpawnerNode(Node):
     def __init__(self):
         super().__init__('spawner')
         self.get_logger().info('Spawner node started. Preparing to spawn swarm into Gazebo...')
+
+    def _model_exists(self, world_name, name, env):
+        # `create` exits 0 and logs to stderr even when its request times out,
+        # so the world itself is the only trustworthy source of truth.
+        try:
+            proc = subprocess.run(
+                ['ign', 'model', '--list', '-w', world_name],
+                capture_output=True, text=True, env=env, timeout=10)
+        except subprocess.TimeoutExpired:
+            return False
+        models = {line.strip().lstrip('-').strip() for line in proc.stdout.splitlines()}
+        return name in models
 
     def spawn_swarm(self):
         pkg_share = get_package_share_directory('swarm_drone')
@@ -54,6 +67,7 @@ class SpawnerNode(Node):
             self.get_logger().info(
                 f'Spawning {name} at position ({sx:.2f}, {sy:.2f}, {sz:.2f})...')
 
+            spawned = False
             for retry in range(15):
                 cmd = [
                     'ros2', 'run', 'ros_gz_sim', 'create',
@@ -63,10 +77,20 @@ class SpawnerNode(Node):
                     '-x', str(sx), '-y', str(sy), '-z', str(sz),
                 ]
                 proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-                if 'OK creation' in proc.stdout or proc.returncode == 0:
+                if self._model_exists(world_name, name, env):
                     self.get_logger().info(f'[SUCCESS] {name} spawned cleanly!')
+                    spawned = True
                     break
+                self.get_logger().warn(
+                    f'{name} missing from world after attempt {retry + 1}/15: '
+                    f'{(proc.stderr or proc.stdout).strip()}')
                 time.sleep(0.5)
+
+            if not spawned:
+                self.get_logger().error(
+                    f'[FAILED] {name} never appeared in world "{world_name}". If every drone '
+                    'fails here, ros_gz_sim is most likely built against a different Gazebo '
+                    'than the one being launched.')
 
             time.sleep(0.2)
 
