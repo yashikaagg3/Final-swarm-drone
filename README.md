@@ -135,15 +135,16 @@ cloning this repo fresh.
 
 ## Running
 
-**Terminal 1 - Gazebo + drones:**
+**Terminal 1 — simulation + swarm logic:**
 
 ```bash
-source ~/swarm_drone/install/setup.bash
-ros2 launch swarm_drone simulation.launch.py
+source ~/swarm_drone/Final-swarm-drone/install/setup.bash
+ros2 launch swarm_drone swarm_launch.launch.py
 ```
 
-This starts Gazebo, loads `worlds/mapping_world.sdf`, and spawns
-`swarm.num_drones` drones (config/swarm.yaml) into `/drone_0`..`/drone_<n-1>`.
+This starts Gazebo, spawns all drones, bridges topics/TF, and runs the
+leader, followers, `marker_manager`, and `task_monitor`. Drones sit
+ready until you dispatch a mission goal (Terminal 3 below).
 
 If Gazebo's window never renders / topics never publish and you see
 `libEGL: failed to create dri2 screen` in the log, your GL/EGL stack
@@ -151,47 +152,44 @@ can't create a hardware context (common in some sandboxes/VMs/CI). Fix:
 
 ```bash
 export LIBGL_ALWAYS_SOFTWARE=1
-ros2 launch swarm_drone simulation.launch.py
+ros2 launch swarm_drone swarm_launch.launch.py
 ```
 
-**Terminal 2 - autonomous swarm mission:**
+**Terminal 2 — RViz (optional):**
 
 ```bash
-source ~/swarm_drone/install/setup.bash
-ros2 launch swarm_drone auto.launch.py
+source ~/swarm_drone/Final-swarm-drone/install/setup.bash
+ros2 launch swarm_drone rviz.launch.py
 ```
 
-Starts the leader, one follower per non-leader drone, `marker_manager`,
-and `task_monitor`. Watch terminal 2 (or just `task_monitor`'s output)
-for the mission transcript: initialization, ready handshake, region
-assignment + acks, takeoff, coverage, and `SWARM MISSION COMPLETE`.
-
-**Terminal 3 - RViz (optional):**
-
-```bash
-source ~/swarm_drone/install/setup.bash
-rviz2 -d $(ros2 pkg prefix swarm_drone)/share/swarm_drone/rviz/swarm.rviz
-```
-
-Start this only after both Terminal 1 (Gazebo) and Terminal 2
-(`auto.launch.py`) are already running, since RViz just visualizes their
-topics. Verified working: you should see, per drone -
+Start this only after Terminal 1 is running. Verified working: you should see, per drone -
 
 - A colored sphere at its live position (bigger sphere = the leader),
   driven directly by `/drone_<i>/state`'s reported position - so it
   tracks the drone's real position even if you fly it manually with
-  `teleop.launch.py` and take it outside its own region.
+  keyboard teleop and take it outside its own region.
 - A text label above it: `D<id> [ROLE] <STATE> <progress>%`.
 - Its region boundary as a colored rectangle outline, with a `Region
   <id>` label at its center - 4 quadrants for the default 4-drone/2x2
   grid.
 - Its planned lawnmower waypoints as small dots filling that rectangle.
-- `drone_0`'s robot model + TF frame (RViz is configured to show
-  `/drone_0/robot_description`).
+- All four robot models, odometry trails, and (optionally) camera feeds.
 
 All of the above comes from `/swarm/markers` (published by
-`marker_manager`) except the robot model/TF, which comes straight from
-`robot_state_publisher`/Gazebo.
+`marker_manager`) except the robot models/TF/trails, which come from
+`robot_state_publisher`, Gazebo bridges, and `/drone_<i>/odom`.
+
+**Terminal 3 — start the mission:**
+
+```bash
+source ~/swarm_drone/Final-swarm-drone/install/setup.bash
+ros2 run swarm_drone mission_cli
+```
+
+Prompts for mapping bounds, altitude, spacing, and speed, then publishes
+the goal to the leader. Watch Terminal 1 (or `task_monitor`'s output)
+for the mission transcript: initialization, ready handshake, region
+assignment + acks, takeoff, coverage, and `SWARM MISSION COMPLETE`.
 
 ## Testing an individual drone
 
@@ -208,7 +206,7 @@ Two ways:
    always include.)
 
 2. **Run one drone's mission node standalone** against a running
-   `simulation.launch.py`, to inspect its id/role/region/position/state
+   `swarm_launch.launch.py`, to inspect its id/role/region/position/state
    directly:
    ```bash
    ros2 run swarm_drone follower --ros-args -r __ns:=/drone_2 -p drone_id:=2
@@ -220,11 +218,14 @@ Two ways:
    an interactive keyboard tool (it doesn't give child processes a real
    terminal on stdin, so `teleop_twist_keyboard` fails with
    `termios.error: Inappropriate ioctl for device` if launched that
-   way) - `ros2 launch swarm_drone teleop.launch.py drone_id:=2` prints
-   the exact command to run instead:
+   way). Run this from an interactive terminal instead:
    ```bash
    ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/drone_2/cmd_vel
    # i/j/k/l/,/u/o to move, q/z to change speed, k to stop
+   ```
+   Or use the built-in manual override node:
+   ```bash
+   ros2 run swarm_drone manual_control --ros-args -p drone_id:=2
    ```
 
 ## Changing the number of drones
@@ -239,7 +240,7 @@ swarm:
 
 `region_allocator.py` picks a grid as close to square as possible for
 any `num_drones` (4 -> 2x2, 6 -> 2x3, 8 -> 2x4, 9 -> 3x3, ...) - nothing
-else needs to change. Re-run `simulation.launch.py` / `auto.launch.py`.
+else needs to change. Re-run `swarm_launch.launch.py`.
 
 ## Changing the mapping area / coverage spacing
 
@@ -266,18 +267,18 @@ line up with those markers anymore.
 
 - **RViz opens but shows nothing at all (empty Displays, no drones)**:
   this isn't an RViz problem - RViz never caches anything, it only shows
-  what's live right now. It means `simulation.launch.py` and/or
-  `auto.launch.py` aren't actually running in another terminal (not
-  started yet, closed, or crashed). Confirm with `ros2 topic list` -
-  if you don't see `/swarm/markers` and `/drone_0/state` in the output,
-  start (or restart) those two launches first, then open RViz.
+  what's live right now. It means `swarm_launch.launch.py` isn't
+  actually running in another terminal (not started yet, closed, or
+  crashed). Confirm with `ros2 topic list` - if you don't see
+  `/swarm/markers` and `/drone_0/state` in the output, start (or
+  restart) the simulation launch first, then open RViz.
 - **Nothing moves / all topics silent, no errors**: check for
   `libEGL`/DRI2 failures in the Gazebo log - see `LIBGL_ALWAYS_SOFTWARE=1`
   above. This failure mode is silent: Gazebo's whole step loop stalls,
   not just camera rendering.
 - **Two Gazebo processes running / duplicate `/drone_0` topics with
-  weird jumpy positions**: you have two `simulation.launch.py` instances
-  up at once. `pkill -f "ign gazebo"` and relaunch just one.
+  weird jumpy positions**: you have two `swarm_launch.launch.py`
+  instances up at once. `pkill -f "ign gazebo"` and relaunch just one.
 - **`Drone <n> has not acknowledged its region assignment`**: that
   follower node isn't running, crashed, or its `drone_id` parameter is
   wrong - check `ros2 node list` and that `follower --ros-args -p
@@ -290,11 +291,9 @@ line up with those markers anymore.
   directly to it does nothing**: seen once on this machine when several
   drones were spawned in very quick succession under software
   rendering - the `VelocityControl` plugin apparently didn't finish
-  attaching before flight commands started. `simulation.launch.py`'s
-  `spawn_stagger_sec` (currently 3.0s) exists specifically to give each
-  spawn time to settle before the next one starts; if you still see
-  this, increase it further and/or increase `takeoff.spawn_ring_spacing`
-  in `config/swarm.yaml`.
+  attaching before flight commands started. The spawner already creates
+  drones one at a time; if you still see this, increase
+  `takeoff.spawn_ring_spacing` in `config/swarm.yaml` and relaunch.
 - **colcon test flake8/pep257 failures from an unrelated plugin**: if
   you see `ModuleNotFoundError: No module named '_pytest.scope'`, run
   with `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` (a user-installed `anyio`
