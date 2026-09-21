@@ -21,7 +21,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from swarm_drone.coverage_planner import generate_coverage_path
-from swarm_drone.drone_controller import DroneController
+from swarm_drone.drone_controller import create_drone_controller
 from swarm_drone.region_allocator import Region
 from swarm_drone.swarm_config import default_config_path, SwarmConfig
 
@@ -55,17 +55,12 @@ class DroneMission:
         self._waypoint_index = 0
         self._assigned_at = None
 
-        self.controller = DroneController(
-            node, cruise_speed=config.cruise_speed, waypoint_tolerance=config.waypoint_tolerance)
+        self.controller = create_drone_controller(node, config)
         self._state_pub = node.create_publisher(String, 'state', 10)
 
         node.create_subscription(String, '/swarm/manual_override', self._on_manual_override, 10)
         node.create_timer(1.0 / state_rate_hz, self._publish_state)
         node.create_timer(1.0 / tick_rate_hz, self._tick)
-
-        # Nothing to actually initialize (no sensors to calibrate) - go
-        # straight to waiting for the leader's task assignment.
-        self.state = DroneState.WAITING_FOR_TASK
 
     def _on_manual_override(self, msg):
         try:
@@ -109,6 +104,12 @@ class DroneMission:
         self.state = DroneState.TASK_ASSIGNED
 
     def _tick(self):
+        if self.state == DroneState.INITIALIZING:
+            # Gazebo odom arrives immediately so this is a no-op for the
+            # kinematic backend. MAVROS waits for FCU local pose.
+            if self.controller.has_odometry():
+                self.state = DroneState.WAITING_FOR_TASK
+            return
         if self.state == DroneState.TASK_ASSIGNED:
             # Stagger takeoff by drone_id so drones spawned close together
             # on the takeoff ring don't all lift off - and collide - at once.

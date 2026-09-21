@@ -7,9 +7,11 @@ divides the mapping area into roughly equal regions, assigns one to
 each drone over real ROS 2 topics, and every drone flies a lawnmower
 coverage pattern over its own region.
 
-This is a first version deliberately built **without** PX4/MAVROS - see
-"Architecture" below for how the control stack is layered so that can
-be swapped in later without touching swarm logic.
+This package keeps swarm logic (regions, coverage, mission_cli) independent
+of the vehicle backend. The default is **PX4 SITL + MAVROS** (the path
+that matches a real Pixhawk). Set `simulation.backend: gazebo` in
+`config/swarm.yaml` for the older kinematic VelocityControl stack. See
+[docs/SIM_TO_HARDWARE.md](docs/SIM_TO_HARDWARE.md).
 
 ## Project purpose
 
@@ -42,17 +44,14 @@ Waypoint / mission logic     (follower.py: DroneMission state machine)
         v
 Drone Controller              (drone_controller.py - takeoff/move_to/stop/land)
         |
-        v
-Gazebo (VelocityControl + OdometryPublisher plugins, via ros_gz_bridge)
+        +-- gazebo: VelocityControl + odom (default)
+        +-- mavros: PX4 SITL or Pixhawk via MAVROS position setpoints
 ```
 
-`drone_controller.py` is the **only** file that knows how a drone is
-actually actuated. Everything above it talks to `takeoff()`,
-`move_to(x, y, z)`, `stop()` and `land()` only. To add PX4/MAVROS
-later, replace what's inside `DroneController` (and the plugins in
-`urdf/control.xacro`) with a MAVROS-based implementation - the leader,
-follower, task allocation, region allocation, coverage planner and
-MarkerArray/monitor code do not need to change.
+`create_drone_controller()` in `drone_controller.py` is the **only** place
+that knows how a drone is actuated. Everything above it talks to
+`takeoff()`, `move_to(x, y, z)`, `stop()` and `land()` only. Missions are
+still started with `mission_cli` (or later a web UI) on `/swarm/goal`.
 
 Region assignment and drone state are communicated with plain
 `std_msgs/String` JSON payloads rather than custom `.msg` types, so the
@@ -66,7 +65,8 @@ whole package stays a single `ament_python` package (no mixed
 - `/swarm/mission_state` (leader -> all): the leader's own state machine state.
 - `/swarm/markers` (marker_manager -> RViz): `visualization_msgs/MarkerArray`.
 - `/drone_<i>/state` (each drone -> leader, marker_manager, task_monitor): id, role, state, assigned region id, position, coverage progress.
-- `/drone_<i>/cmd_vel`, `/drone_<i>/odom`: DroneController's actuation/feedback (bridged to Gazebo).
+- `/drone_<i>/cmd_vel`, `/drone_<i>/odom`: gazebo-backend actuation/feedback.
+- `/drone_<i>/mavros/...`: PX4/MAVROS topics when `simulation.backend` is `mavros`.
 - `/drone_<i>/camera/image_raw`, `/drone_<i>/camera/camera_info`: the drone's RGB camera.
 
 ### State machines
@@ -190,6 +190,10 @@ Prompts for mapping bounds, altitude, spacing, and speed, then publishes
 the goal to the leader. Watch Terminal 1 (or `task_monitor`'s output)
 for the mission transcript: initialization, ready handshake, region
 assignment + acks, takeoff, coverage, and `SWARM MISSION COMPLETE`.
+
+The launch command and `mission_cli` do not change. Default backend is
+PX4 SITL + MAVROS; details are in [docs/SIM_TO_HARDWARE.md](docs/SIM_TO_HARDWARE.md).
+For the old kinematic `cmd_vel` stack, set `simulation.backend: gazebo`.
 
 ## Testing an individual drone
 

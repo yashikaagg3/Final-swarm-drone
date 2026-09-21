@@ -41,8 +41,26 @@ coverage:
   waypoint_tolerance: 0.3
 
 simulation:
+  # mavros: PX4 SITL + MAVROS per drone (default; matches Pixhawk command path).
+  # gazebo: kinematic VelocityControl stack (no PX4 needed).
+  backend: mavros
   use_sim_time: true
   world_name: mapping_world
+  # Wind is applied only on the mavros/PX4 world. 0 disables it.
+  wind:
+    speed_m_s: 1.5
+    direction_deg: 0.0
+    gusts: false
+  mavros:
+    setpoint_rate_hz: 20.0
+    # SITL: udp://:{local}@127.0.0.1:{remote} with local=14540+id, remote=14580+id.
+    # Hardware: e.g. "/dev/ttyUSB0:921600" (no braces; same URL on that companion).
+    fcu_url_pattern: "udp://:{local}@127.0.0.1:{remote}"
+    # Empty = $PX4_AUTOPILOT_DIR or ~/PX4-Autopilot.
+    px4_dir: ""
+    model: gz_x500
+    # false on a real Pixhawk: skip SITL/Gazebo, only start MAVROS.
+    start_sitl: true
 
 testing:
   enabled: false

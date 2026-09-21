@@ -2,9 +2,10 @@
 Interactive terminal node for manual teleoperation override of swarm drones.
 
 User selects a drone_id to override. The node notifies the swarm leader/follower
-of the manual override, takes keyboard control of /drone_<id>/cmd_vel, and upon
-exit sends a resume signal so the drone resumes its autonomous path and the leader
-resumes tracking region progress.
+of the manual override, takes keyboard control of the vehicle command topic
+(cmd_vel on the gazebo backend, MAVROS velocity setpoints on mavros), and upon
+exit sends a resume signal so the drone resumes its autonomous path and the
+leader resumes tracking region progress.
 """
 
 import json
@@ -13,7 +14,7 @@ import sys
 import termios
 import tty
 
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, TwistStamped
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -33,52 +34,67 @@ def get_key(settings, timeout=0.1):
 
 class ManualControlNode(Node):
 
-    def __init__(self):
+    def __init__(self, backend='mavros'):
         super().__init__('manual_control')
+        self.backend = backend
         self.override_pub = self.create_publisher(String, '/swarm/manual_override', 10)
         self.cmd_pub = None
         self.active_drone_id = None
 
     def select_drone(self, drone_id):
         self.active_drone_id = drone_id
-        topic = f'/drone_{drone_id}/cmd_vel'
-        self.cmd_pub = self.create_publisher(Twist, topic, 10)
+        if self.backend == 'mavros':
+            topic = f'/drone_{drone_id}/mavros/setpoint_velocity/cmd_vel'
+            self.cmd_pub = self.create_publisher(TwistStamped, topic, 10)
+        else:
+            topic = f'/drone_{drone_id}/cmd_vel'
+            self.cmd_pub = self.create_publisher(Twist, topic, 10)
 
-        # Notify swarm leader & drone of override
         msg = String()
         msg.data = json.dumps({'drone_id': drone_id, 'action': 'override'})
         self.override_pub.publish(msg)
 
     def release_drone(self):
         if self.active_drone_id is not None:
-            # Publish 0 velocity
             if self.cmd_pub:
-                self.cmd_pub.publish(Twist())
+                self.send_twist(0.0, 0.0, 0.0)
 
-            # Notify swarm leader & drone of resume
             msg = String()
             msg.data = json.dumps({'drone_id': self.active_drone_id, 'action': 'resume'})
             self.override_pub.publish(msg)
             self.active_drone_id = None
 
     def send_twist(self, vx, vy, vz):
-        if self.cmd_pub:
-            twist = Twist()
-            twist.linear.x = float(vx)
-            twist.linear.y = float(vy)
-            twist.linear.z = float(vz)
-            self.cmd_pub.publish(twist)
+        if self.cmd_pub is None:
+            return
+        if self.backend == 'mavros':
+            msg = TwistStamped()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = 'map'
+            msg.twist.linear.x = float(vx)
+            msg.twist.linear.y = float(vy)
+            msg.twist.linear.z = float(vz)
+            self.cmd_pub.publish(msg)
+            return
+        twist = Twist()
+        twist.linear.x = float(vx)
+        twist.linear.y = float(vy)
+        twist.linear.z = float(vz)
+        self.cmd_pub.publish(twist)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ManualControlNode()
 
+    backend = 'mavros'
     try:
         config = SwarmConfig.from_yaml_file(default_config_path())
         num_drones = config.num_drones
+        backend = config.backend
     except Exception:
         num_drones = 4
+
+    node = ManualControlNode(backend=backend)
 
     settings = termios.tcgetattr(sys.stdin)
 
@@ -88,6 +104,7 @@ def main(args=None):
             print('        SWARM DRONE MANUAL CONTROL INTERFACE        ')
             print('=' * 60)
             print(f'Available Drone IDs: 0 to {num_drones - 1}')
+            print(f'Backend: {backend}')
             raw_id = input('Enter Drone ID to control (or "q" to exit): ').strip()
 
             if raw_id.lower() in ('q', 'exit', 'quit'):

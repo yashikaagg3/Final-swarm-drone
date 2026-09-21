@@ -14,6 +14,9 @@ class ConfigError(Exception):
     pass
 
 
+_VALID_BACKENDS = ('gazebo', 'mavros')
+
+
 @dataclass
 class SwarmConfig:
     num_drones: int
@@ -36,6 +39,15 @@ class SwarmConfig:
     waypoint_tolerance: float
     use_sim_time: bool
     world_name: str
+    backend: str
+    wind_speed_m_s: float
+    wind_direction_deg: float
+    wind_gusts: bool
+    mavros_setpoint_rate_hz: float
+    mavros_fcu_url_pattern: str
+    mavros_px4_dir: str
+    mavros_model: str
+    mavros_start_sitl: bool
     testing_enabled: bool
     test_drone_id: int
 
@@ -50,6 +62,9 @@ class SwarmConfig:
             testing = data.get('testing', {})
         except (KeyError, TypeError) as e:
             raise ConfigError(f'Missing required YAML section: {e}') from e
+
+        mavros = sim.get('mavros', {}) or {}
+        wind = sim.get('wind', {}) or {}
 
         try:
             cfg = cls(
@@ -73,6 +88,18 @@ class SwarmConfig:
                 waypoint_tolerance=float(coverage.get('waypoint_tolerance', 0.3)),
                 use_sim_time=bool(sim.get('use_sim_time', True)),
                 world_name=str(sim.get('world_name', 'mapping_world')),
+                backend=str(sim.get('backend', 'mavros')).lower(),
+                wind_speed_m_s=float(wind.get('speed_m_s', 0.0)),
+                wind_direction_deg=float(wind.get('direction_deg', 0.0)),
+                wind_gusts=bool(wind.get('gusts', False)),
+                mavros_setpoint_rate_hz=float(mavros.get('setpoint_rate_hz', 20.0)),
+                mavros_fcu_url_pattern=str(
+                    mavros.get(
+                        'fcu_url_pattern',
+                        'udp://:{local}@127.0.0.1:{remote}')),
+                mavros_px4_dir=str(mavros.get('px4_dir', '') or ''),
+                mavros_model=str(mavros.get('model', 'gz_x500')),
+                mavros_start_sitl=bool(mavros.get('start_sitl', True)),
                 testing_enabled=bool(testing.get('enabled', False)),
                 test_drone_id=int(testing.get('test_drone_id', 0)),
             )
@@ -106,6 +133,17 @@ class SwarmConfig:
             raise ConfigError(
                 f'testing.test_drone_id ({self.test_drone_id}) is not a valid drone id '
                 f'in [0, {self.num_drones - 1}]')
+        if self.backend not in _VALID_BACKENDS:
+            raise ConfigError(
+                f'simulation.backend must be one of {_VALID_BACKENDS}, '
+                f'got {self.backend!r}')
+        if self.backend == 'mavros' and self.mavros_setpoint_rate_hz < 2.0:
+            raise ConfigError(
+                'simulation.mavros.setpoint_rate_hz must be >= 2.0 '
+                f'(PX4 OFFBOARD minimum), got {self.mavros_setpoint_rate_hz}')
+        if self.wind_speed_m_s < 0.0:
+            raise ConfigError(
+                f'simulation.wind.speed_m_s must be >= 0, got {self.wind_speed_m_s}')
 
     def is_leader(self, drone_id):
         if not (0 <= drone_id < self.num_drones):
@@ -118,6 +156,19 @@ class SwarmConfig:
 
     def area_height(self):
         return self.max_y - self.min_y
+
+    def mavros_fcu_url(self, drone_id):
+        """FCU URL for drone_id. Formats {local}/{remote}/{drone_id} when present."""
+        pattern = self.mavros_fcu_url_pattern
+        if '{' not in pattern:
+            return pattern
+        local = 14540 + drone_id
+        remote = 14580 + drone_id
+        return pattern.format(local=local, remote=remote, drone_id=drone_id)
+
+    def mavros_sysid(self, drone_id):
+        """PX4 MAVLink system id for drone_id (1-based)."""
+        return drone_id + 1
 
     @classmethod
     def from_yaml_file(cls, path):

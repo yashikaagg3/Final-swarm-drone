@@ -68,3 +68,54 @@ def test_invalid_test_drone_id_raises_only_when_testing_enabled():
     _cfg(testing={'enabled': False, 'test_drone_id': 99})
     with pytest.raises(ConfigError):
         _cfg(testing={'enabled': True, 'test_drone_id': 99})
+
+
+def test_default_backend_is_mavros():
+    cfg = _cfg()
+    assert cfg.backend == 'mavros'
+    assert cfg.mavros_setpoint_rate_hz == 20.0
+    assert cfg.wind_speed_m_s == 0.0
+    assert cfg.mavros_start_sitl is True
+
+
+def test_mavros_backend_and_fcu_url():
+    cfg = _cfg(simulation={
+        'backend': 'mavros',
+        'mavros': {
+            'fcu_url_pattern': 'udp://:{local}@127.0.0.1:{remote}',
+            'setpoint_rate_hz': 20.0,
+        },
+        'wind': {'speed_m_s': 1.5, 'direction_deg': 90.0, 'gusts': False},
+    })
+    assert cfg.backend == 'mavros'
+    assert cfg.mavros_fcu_url(0) == 'udp://:14540@127.0.0.1:14580'
+    assert cfg.mavros_fcu_url(2) == 'udp://:14542@127.0.0.1:14582'
+    assert cfg.mavros_sysid(0) == 1
+    assert cfg.mavros_sysid(3) == 4
+    assert cfg.wind_speed_m_s == 1.5
+    assert cfg.wind_direction_deg == 90.0
+
+
+def test_hardware_fcu_url_without_braces():
+    cfg = _cfg(simulation={
+        'backend': 'mavros',
+        'mavros': {'fcu_url_pattern': '/dev/ttyUSB0:921600', 'start_sitl': False},
+    })
+    assert cfg.mavros_fcu_url(0) == '/dev/ttyUSB0:921600'
+    assert cfg.mavros_fcu_url(1) == '/dev/ttyUSB0:921600'
+    assert cfg.mavros_start_sitl is False
+
+
+def test_gazebo_backend_still_selectable():
+    cfg = _cfg(simulation={'backend': 'gazebo'})
+    assert cfg.backend == 'gazebo'
+
+
+def test_invalid_backend_raises():
+    with pytest.raises(ConfigError):
+        _cfg(simulation={'backend': 'cmd_vel'})
+
+
+def test_setpoint_rate_below_offboard_minimum_raises():
+    with pytest.raises(ConfigError):
+        _cfg(simulation={'backend': 'mavros', 'mavros': {'setpoint_rate_hz': 1.0}})

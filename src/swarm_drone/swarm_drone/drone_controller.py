@@ -1,13 +1,12 @@
 """
 Low-level per-drone control interface.
 
-DroneController is the ONLY piece of code that knows how a drone is
-actually actuated in simulation (gz-sim VelocityControl + OdometryPublisher,
-bridged to plain ROS 2 `cmd_vel` / `odom` topics in the drone's namespace).
-
 Leader/follower/coverage logic talks to this object through takeoff(),
-move_to(), stop() and land() only. To later swap the backend for
-MAVROS/PX4, only this file needs to change - callers are unaffected.
+move_to(), stop() and land() only. create_drone_controller() picks the
+backend from SwarmConfig.simulation.backend:
+
+- gazebo: Twist cmd_vel + odom (Ignition VelocityControl), the original stack.
+- mavros: PoseStamped setpoints via MAVROS to PX4 SITL or a real Pixhawk.
 """
 
 import math
@@ -16,7 +15,8 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 
 
-class DroneController:
+class GazeboDroneController:
+    """Kinematic VelocityControl backend used when simulation.backend is gazebo."""
 
     def __init__(self, node, cruise_speed=1.0, waypoint_tolerance=0.3, control_rate_hz=10.0):
         self._node = node
@@ -106,3 +106,25 @@ class DroneController:
 
         scale = min(self._cruise_speed / distance, 1.0)
         self._publish_twist(dx * scale, dy * scale, dz * scale)
+
+
+# Original name: existing imports and docs still resolve to the gazebo backend.
+DroneController = GazeboDroneController
+
+
+def create_drone_controller(node, config):
+    """Return the vehicle backend selected by config.backend."""
+    backend = getattr(config, 'backend', 'mavros')
+    if backend == 'mavros':
+        from swarm_drone.mavros_controller import MavrosDroneController
+        return MavrosDroneController(
+            node,
+            cruise_speed=config.cruise_speed,
+            waypoint_tolerance=config.waypoint_tolerance,
+            setpoint_rate_hz=config.mavros_setpoint_rate_hz,
+        )
+    return GazeboDroneController(
+        node,
+        cruise_speed=config.cruise_speed,
+        waypoint_tolerance=config.waypoint_tolerance,
+    )

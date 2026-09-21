@@ -1,6 +1,4 @@
-"""
-Launch file for RViz visualization with swarm_drone configuration.
-"""
+"""Launch file for RViz visualization with swarm_drone configuration."""
 
 import os
 
