@@ -144,6 +144,10 @@ class LeaderNode(Node):
             self.config.num_drones, self.config.min_x, self.config.max_x,
             self.config.min_y, self.config.max_y)
         self.task_manager.set_assignments(regions)
+        # The leader's own controller was constructed at node startup with
+        # the YAML-default cruise_speed, before any mission_cli goal could
+        # arrive - push the (possibly just-updated) value in now.
+        self.mission.apply_mission_params(cruise_speed=self.config.cruise_speed)
         for region in sorted(regions, key=lambda r: r.drone_id):
             self.get_logger().info(f'Drone {region.drone_id} -> Region {region.drone_id}')
             if region.drone_id == self.config.leader_id:
@@ -153,7 +157,9 @@ class LeaderNode(Node):
 
     def _tick_waiting_for_ack(self, now):
         if now - self._last_assignment_publish > self._assignment_republish_period:
-            self.task_manager.publish_assignments(self.config.flight_altitude)
+            self.task_manager.publish_assignments(
+                self.config.flight_altitude, self.config.waypoint_spacing,
+                self.config.cruise_speed)
             self._last_assignment_publish = now
 
         if self._all_acknowledged():

@@ -3,7 +3,7 @@
 # hard-coded in the Python nodes.
 
 swarm:
-  num_drones: 4
+  num_drones: 10
   leader_id: 0
   # Seconds to wait for a follower ack before the leader reports it unresponsive.
   ack_timeout_sec: 10.0
@@ -43,7 +43,7 @@ coverage:
 simulation:
   # mavros: PX4 SITL + MAVROS per drone (default; matches Pixhawk command path).
   # gazebo: kinematic VelocityControl stack (no PX4 needed).
-  backend: mavros
+  backend: Gazebo
   use_sim_time: true
   world_name: mapping_world
   # Wind is applied only on the mavros/PX4 world. 0 disables it.

@@ -50,6 +50,9 @@ class GazeboDroneController:
     def is_idle(self):
         return self._mode == 'idle'
 
+    def set_cruise_speed(self, cruise_speed):
+        self._cruise_speed = cruise_speed
+
     def move_to(self, x, y, z, on_reached=None):
         """Fly (in a straight line, simple P-control) to (x, y, z)."""
         self._target = (x, y, z)

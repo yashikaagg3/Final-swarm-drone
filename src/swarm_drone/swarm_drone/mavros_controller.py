@@ -73,6 +73,9 @@ class MavrosDroneController:
     def is_idle(self):
         return self._mode in ('idle', 'landed')
 
+    def set_cruise_speed(self, cruise_speed):
+        self._cruise_speed = cruise_speed
+
     def _is_connected(self):
         return self._fcu_state is not None and self._fcu_state.connected
 

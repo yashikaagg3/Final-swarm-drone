@@ -55,10 +55,12 @@ class TaskManager:
     def set_assignments(self, regions):
         self.assignments = {region.drone_id: region for region in regions}
 
-    def publish_assignments(self, flight_altitude):
+    def publish_assignments(self, flight_altitude, waypoint_spacing, cruise_speed):
         msg = String()
         msg.data = json.dumps({
             'flight_altitude': flight_altitude,
+            'waypoint_spacing': waypoint_spacing,
+            'cruise_speed': cruise_speed,
             'assignments': [
                 {
                     'drone_id': drone_id,

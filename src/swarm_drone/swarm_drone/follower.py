@@ -92,6 +92,24 @@ class DroneMission:
         except Exception as e:
             self._node.get_logger().error(f'Error processing manual override message: {e}')
 
+    def apply_mission_params(self, flight_altitude=None, waypoint_spacing=None, cruise_speed=None):
+        """Override this drone's static YAML defaults with mission_cli values.
+
+        Each drone runs in its own process with its own SwarmConfig loaded
+        once at startup, so mission_cli's goal - received only by the leader
+        - has to be re-broadcast over /swarm/region_assignment and applied
+        here on every drone (leader included, since its own controller was
+        already constructed with the old cruise_speed before the goal
+        arrived).
+        """
+        if flight_altitude is not None:
+            self._config.flight_altitude = flight_altitude
+        if waypoint_spacing is not None:
+            self._config.waypoint_spacing = waypoint_spacing
+        if cruise_speed is not None:
+            self._config.cruise_speed = cruise_speed
+            self.controller.set_cruise_speed(cruise_speed)
+
     def assign_region(self, region: Region):
         if self.state != DroneState.WAITING_FOR_TASK:
             return  # already assigned; ignore a duplicate/late assignment
@@ -188,6 +206,10 @@ class FollowerNode(Node):
         except json.JSONDecodeError:
             self.get_logger().error('Received malformed region_assignment message')
             return
+        self.mission.apply_mission_params(
+            flight_altitude=data.get('flight_altitude'),
+            waypoint_spacing=data.get('waypoint_spacing'),
+            cruise_speed=data.get('cruise_speed'))
         for entry in data.get('assignments', []):
             if entry['drone_id'] == self.mission.drone_id:
                 region = Region(

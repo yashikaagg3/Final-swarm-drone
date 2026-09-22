@@ -14,6 +14,7 @@ The drones spawn and sit on the ground ready until mission_cli is run.
 
 import math
 import os
+import shutil
 import tempfile
 
 from ament_index_python.packages import get_package_share_directory
@@ -22,6 +23,24 @@ from launch.actions import ExecuteProcess, OpaqueFunction, TimerAction
 from launch_ros.actions import Node
 import xacro
 import yaml
+
+
+def _nvidia_offload_env():
+    """Route GL/Vulkan rendering to the NVIDIA GPU on hybrid-graphics
+    machines where PRIME is in on-demand mode. Without this, Mesa falls
+    back to the integrated GPU; if that iGPU is unsupported (e.g. "Driver
+    does not support the 0x7d67 PCI ID"), ign gazebo's GUI degrades to a
+    software rasterizer that's slow enough to starve gz-transport, making
+    SceneBroadcaster time out and every spawn request go unanswered.
+    No-op when nvidia-smi isn't present.
+    """
+    if shutil.which('nvidia-smi') is None:
+        return {}
+    return {
+        '__NV_PRIME_RENDER_OFFLOAD': '1',
+        '__GLX_VENDOR_LIBRARY_NAME': 'nvidia',
+        '__VK_LAYER_NV_optimus': 'NVIDIA_only',
+    }
 
 
 def _spawn_xy(i, num_drones, base_x, base_y, ring_spacing):
@@ -150,6 +169,7 @@ def _gazebo_backend_actions(pkg_share, cfg, config_path, num_drones, use_sim_tim
             additional_env={
                 'MESA_GL_VERSION_OVERRIDE': '3.3',
                 'QT_X11_NO_MITSHM': '1',
+                **_nvidia_offload_env(),
             },
             output='screen',
         ),
@@ -335,6 +355,14 @@ def _swarm_logic_actions(config_path, num_drones, leader_id, use_sim_time):
 
 
 def launch_setup(context, *args, **kwargs):
+    # ign gazebo, ros_gz_sim (spawner) and ros_gz_bridge all sit on
+    # ignition-transport11 here. With more than one active NIC (e.g. wifi
+    # plus a docker0 bridge), transport's automatic interface selection can
+    # pick one that can't route replies back, and every request - spawn
+    # included - dies with "NodeShared::RecvSrvRequest(): Host unreachable".
+    # Pinning discovery to loopback fixes it; respects a user override.
+    os.environ.setdefault('IGN_IP', '127.0.0.1')
+
     pkg_share = get_package_share_directory('swarm_drone')
     config_path = os.path.join(pkg_share, 'config', 'swarm.yaml')
 
